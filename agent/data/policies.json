@@ -1,0 +1,7 @@
+[
+  {"id":"P-RETURN","title":"Standard returns","text":"Unused items in original packaging may be refunded within 30 calendar days of delivery. Opened or used items are not eligible under this standard return rule. This rule does not override defect, wrong-item, or final-sale policies."},
+  {"id":"P-DEFECT","title":"Defective products","text":"A confirmed manufacturing defect reported within 30 calendar days of delivery qualifies for a free replacement; if replacement stock is unavailable, offer a refund. From day 31 through day 365, offer a warranty repair or warranty replacement, not a refund. After day 365, escalate for manual review."},
+  {"id":"P-FINAL","title":"Final sale","text":"Final-sale items cannot be returned for preference or sizing. A manufacturing defect is still handled under P-DEFECT. A wrong item is still handled under P-WRONG."},
+  {"id":"P-WRONG","title":"Wrong item shipped","text":"If the item received differs from the ordered SKU and the customer reports it within 30 calendar days of delivery, send the correct item with a prepaid return label. After day 30, escalate for manual review."},
+  {"id":"P-DELIVERY","title":"Missing delivery","text":"If an order is at least 7 calendar days past its promised delivery date and the carrier confirms it is lost, offer a replacement; if replacement stock is unavailable, offer a refund. If the carrier status is unresolved, escalate."}
+]

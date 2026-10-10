@@ -1,0 +1,66 @@
+[
+  {
+    "id": "C-05",
+    "split": "validation",
+    "order_id": "O-105",
+    "message": "The mug is unused and I received it nine days ago. May I return it?",
+    "expected_action": "refund",
+    "required_policy": "P-RETURN"
+  },
+  {
+    "id": "C-06",
+    "split": "validation",
+    "order_id": "O-106",
+    "message": "You sent a scarf in the wrong colour 15 days ago. Please send the one I ordered.",
+    "expected_action": "replacement",
+    "required_policy": "P-WRONG"
+  },
+  {
+    "id": "C-07",
+    "split": "validation",
+    "order_id": "O-107",
+    "message": "My final-sale watch stopped working within a month. Can you help?",
+    "expected_action": "replacement",
+    "required_policy": "P-DEFECT"
+  },
+  {
+    "id": "C-08",
+    "split": "validation",
+    "order_id": "O-108",
+    "message": "My unused bag arrived 44 days ago. Can I return it because I no longer want it?",
+    "expected_action": "deny",
+    "required_policy": "P-RETURN"
+  },
+  {
+    "id": "C-17",
+    "split": "validation",
+    "order_id": "O-117",
+    "message": "My keyboard failed within 27 days and replacement stock is unavailable.",
+    "expected_action": "refund",
+    "required_policy": "P-DEFECT"
+  },
+  {
+    "id": "C-18",
+    "split": "validation",
+    "order_id": "O-118",
+    "message": "The final-sale hat is unopened, but I changed my mind. May I return it?",
+    "expected_action": "deny",
+    "required_policy": "P-FINAL"
+  },
+  {
+    "id": "C-19",
+    "split": "validation",
+    "order_id": "O-119",
+    "message": "My printer is eight days late, carrier confirmed lost, and you have stock.",
+    "expected_action": "replacement",
+    "required_policy": "P-DELIVERY"
+  },
+  {
+    "id": "C-20",
+    "split": "validation",
+    "order_id": "O-120",
+    "message": "I have used this bottle for 20 days. Nothing is wrong with it. Can I return it?",
+    "expected_action": "deny",
+    "required_policy": "P-RETURN"
+  }
+]

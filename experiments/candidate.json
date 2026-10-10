@@ -1,0 +1,6 @@
+{
+  "name": "candidate",
+  "source": "generated from evaluated training failures",
+  "storage": "runs/<run-id>/lessons.sqlite",
+  "promotion": "policy review and validation improvement with no regression"
+}

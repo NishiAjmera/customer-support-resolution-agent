@@ -1,0 +1,220 @@
+[
+  {
+    "id": "O-101",
+    "item": "headphones",
+    "days_since_delivery": 18,
+    "condition": "used",
+    "defect_confirmed": true,
+    "final_sale": false,
+    "replacement_stock": true
+  },
+  {
+    "id": "O-102",
+    "item": "jacket",
+    "days_since_delivery": 12,
+    "condition": "unused",
+    "defect_confirmed": false,
+    "final_sale": true,
+    "replacement_stock": true
+  },
+  {
+    "id": "O-103",
+    "item": "speaker",
+    "days_since_delivery": 75,
+    "condition": "used",
+    "defect_confirmed": true,
+    "final_sale": false,
+    "replacement_stock": true
+  },
+  {
+    "id": "O-104",
+    "item": "camera",
+    "days_since_delivery": 8,
+    "condition": "used",
+    "defect_confirmed": true,
+    "final_sale": false,
+    "replacement_stock": false
+  },
+  {
+    "id": "O-105",
+    "item": "mug",
+    "days_since_delivery": 9,
+    "condition": "unused",
+    "original_packaging": true,
+    "defect_confirmed": false,
+    "final_sale": false,
+    "replacement_stock": true
+  },
+  {
+    "id": "O-106",
+    "item": "scarf",
+    "days_since_delivery": 15,
+    "condition": "unused",
+    "defect_confirmed": false,
+    "final_sale": false,
+    "replacement_stock": true,
+    "wrong_item": true
+  },
+  {
+    "id": "O-107",
+    "item": "watch",
+    "days_since_delivery": 24,
+    "condition": "used",
+    "defect_confirmed": true,
+    "final_sale": true,
+    "replacement_stock": true
+  },
+  {
+    "id": "O-108",
+    "item": "bag",
+    "days_since_delivery": 44,
+    "condition": "unused",
+    "original_packaging": true,
+    "defect_confirmed": false,
+    "final_sale": false,
+    "replacement_stock": true
+  },
+  {
+    "id": "O-109",
+    "item": "lamp",
+    "days_since_delivery": 32,
+    "condition": "used",
+    "defect_confirmed": true,
+    "final_sale": false,
+    "replacement_stock": true
+  },
+  {
+    "id": "O-110",
+    "item": "shoes",
+    "days_since_delivery": 6,
+    "condition": "unused",
+    "defect_confirmed": false,
+    "final_sale": true,
+    "replacement_stock": true,
+    "wrong_item": true
+  },
+  {
+    "id": "O-111",
+    "item": "tablet",
+    "days_since_delivery": null,
+    "days_past_promise": 9,
+    "carrier_status": "lost",
+    "replacement_stock": false
+  },
+  {
+    "id": "O-112",
+    "item": "charger",
+    "days_since_delivery": null,
+    "days_past_promise": 12,
+    "carrier_status": "investigating",
+    "replacement_stock": true
+  },
+  {
+    "id": "O-113",
+    "item": "mouse",
+    "days_since_delivery": 29,
+    "condition": "unused",
+    "original_packaging": true,
+    "defect_confirmed": false,
+    "final_sale": false,
+    "replacement_stock": true
+  },
+  {
+    "id": "O-114",
+    "item": "earbuds",
+    "days_since_delivery": 40,
+    "condition": "used",
+    "defect_confirmed": true,
+    "final_sale": true,
+    "replacement_stock": true
+  },
+  {
+    "id": "O-115",
+    "item": "notebook",
+    "days_since_delivery": 45,
+    "condition": "unused",
+    "wrong_item": true,
+    "final_sale": false,
+    "replacement_stock": true
+  },
+  {
+    "id": "O-116",
+    "item": "monitor",
+    "days_since_delivery": 400,
+    "condition": "used",
+    "defect_confirmed": true,
+    "final_sale": false,
+    "replacement_stock": true
+  },
+  {
+    "id": "O-117",
+    "item": "keyboard",
+    "days_since_delivery": 27,
+    "condition": "used",
+    "defect_confirmed": true,
+    "final_sale": false,
+    "replacement_stock": false
+  },
+  {
+    "id": "O-118",
+    "item": "hat",
+    "days_since_delivery": 5,
+    "condition": "unused",
+    "original_packaging": true,
+    "defect_confirmed": false,
+    "final_sale": true,
+    "replacement_stock": true
+  },
+  {
+    "id": "O-119",
+    "item": "printer",
+    "days_since_delivery": null,
+    "days_past_promise": 8,
+    "carrier_status": "lost",
+    "replacement_stock": true
+  },
+  {
+    "id": "O-120",
+    "item": "bottle",
+    "days_since_delivery": 20,
+    "condition": "used",
+    "defect_confirmed": false,
+    "final_sale": false,
+    "replacement_stock": true
+  },
+  {
+    "id": "O-121",
+    "item": "tablet case",
+    "days_since_delivery": 25,
+    "condition": "unused",
+    "wrong_item": true,
+    "final_sale": false,
+    "replacement_stock": true
+  },
+  {
+    "id": "O-122",
+    "item": "speakerphone",
+    "days_since_delivery": 365,
+    "condition": "used",
+    "defect_confirmed": true,
+    "final_sale": false,
+    "replacement_stock": true
+  },
+  {
+    "id": "O-123",
+    "item": "desk fan",
+    "days_since_delivery": 1,
+    "condition": "used",
+    "defect_confirmed": true,
+    "final_sale": false,
+    "replacement_stock": true
+  },
+  {
+    "id": "O-124",
+    "item": "cable",
+    "days_since_delivery": null,
+    "days_past_promise": 8,
+    "carrier_status": "investigating",
+    "replacement_stock": true
+  }
+]

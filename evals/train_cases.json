@@ -1,0 +1,66 @@
+[
+  {
+    "id": "C-01",
+    "split": "train",
+    "order_id": "O-101",
+    "message": "My headphones arrived 18 days ago and the left speaker stopped working. Can I get a refund?",
+    "expected_action": "replacement",
+    "required_policy": "P-DEFECT"
+  },
+  {
+    "id": "C-02",
+    "split": "train",
+    "order_id": "O-102",
+    "message": "This final-sale jacket is unused, but I changed my mind. Can I return it?",
+    "expected_action": "deny",
+    "required_policy": "P-FINAL"
+  },
+  {
+    "id": "C-03",
+    "split": "train",
+    "order_id": "O-103",
+    "message": "My speaker failed after about two months. I want my money back.",
+    "expected_action": "warranty",
+    "required_policy": "P-DEFECT"
+  },
+  {
+    "id": "C-04",
+    "split": "train",
+    "order_id": "O-104",
+    "message": "My new camera has a confirmed defect and you have no replacement stock. What now?",
+    "expected_action": "refund",
+    "required_policy": "P-DEFECT"
+  },
+  {
+    "id": "C-13",
+    "split": "train",
+    "order_id": "O-113",
+    "message": "I received this unopened mouse 29 days ago. Can I return it?",
+    "expected_action": "refund",
+    "required_policy": "P-RETURN"
+  },
+  {
+    "id": "C-14",
+    "split": "train",
+    "order_id": "O-114",
+    "message": "My final-sale earbuds have a confirmed defect after 40 days. I want a refund.",
+    "expected_action": "warranty",
+    "required_policy": "P-DEFECT"
+  },
+  {
+    "id": "C-15",
+    "split": "train",
+    "order_id": "O-115",
+    "message": "I received the wrong notebook 45 days ago. Please replace it.",
+    "expected_action": "escalate",
+    "required_policy": "P-WRONG"
+  },
+  {
+    "id": "C-16",
+    "split": "train",
+    "order_id": "O-116",
+    "message": "My monitor developed a confirmed fault after 400 days. What are my options?",
+    "expected_action": "escalate",
+    "required_policy": "P-DEFECT"
+  }
+]

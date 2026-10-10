@@ -1,0 +1,66 @@
+[
+  {
+    "id": "C-09",
+    "split": "holdout",
+    "order_id": "O-109",
+    "message": "My lamp stopped working after 32 days. Is a refund possible?",
+    "expected_action": "warranty",
+    "required_policy": "P-DEFECT"
+  },
+  {
+    "id": "C-10",
+    "split": "holdout",
+    "order_id": "O-110",
+    "message": "My final-sale shoes arrived, but the box contains the wrong size SKU. What can you do?",
+    "expected_action": "replacement",
+    "required_policy": "P-WRONG"
+  },
+  {
+    "id": "C-11",
+    "split": "holdout",
+    "order_id": "O-111",
+    "message": "My tablet is nine days late. The carrier says it is lost and you have no more in stock.",
+    "expected_action": "refund",
+    "required_policy": "P-DELIVERY"
+  },
+  {
+    "id": "C-12",
+    "split": "holdout",
+    "order_id": "O-112",
+    "message": "My charger is 12 days late and tracking still says investigating. Please refund me now.",
+    "expected_action": "escalate",
+    "required_policy": "P-DELIVERY"
+  },
+  {
+    "id": "C-21",
+    "split": "heldout",
+    "order_id": "O-121",
+    "message": "I received a different tablet case than the ordered SKU 25 days ago.",
+    "expected_action": "replacement",
+    "required_policy": "P-WRONG"
+  },
+  {
+    "id": "C-22",
+    "split": "heldout",
+    "order_id": "O-122",
+    "message": "My speakerphone has a confirmed defect on day 365. May I get a refund?",
+    "expected_action": "warranty",
+    "required_policy": "P-DEFECT"
+  },
+  {
+    "id": "C-23",
+    "split": "heldout",
+    "order_id": "O-123",
+    "message": "The desk fan failed on day one; replacement stock is available.",
+    "expected_action": "replacement",
+    "required_policy": "P-DEFECT"
+  },
+  {
+    "id": "C-24",
+    "split": "heldout",
+    "order_id": "O-124",
+    "message": "My cable is eight days late, but carrier tracking is still investigating.",
+    "expected_action": "escalate",
+    "required_policy": "P-DELIVERY"
+  }
+]

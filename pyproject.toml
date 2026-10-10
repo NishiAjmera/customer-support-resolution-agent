@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "support-agent-improvement-lab"
+version = "0.1.0"
+description = "Gemini customer support agent evaluation and learning demo"
+requires-python = ">=3.11"
+dependencies = ["google-genai>=1.0,<3", "langgraph>=1,<2", "langsmith>=0.4,<1", "pydantic>=2,<3", "python-dotenv>=1,<2"]
+
+[project.optional-dependencies]
+dashboard = ["streamlit>=1.40,<2"]
+
+[tool.setuptools]
+packages = ["agent", "learning", "evals"]
+py-modules = ["demo"]
+
+[tool.setuptools.package-data]
+agent = ["data/*.json"]
+evals = ["*.json"]
