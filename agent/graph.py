@@ -20,6 +20,11 @@ MAX_DECISIONS = 8
 ORDER_PATTERN = re.compile(r"^O-\d{3}$")
 
 
+def trace_content_enabled() -> bool:
+    """Only log full prompts/skills when explicitly enabled for fictional demo data."""
+    return os.getenv("LANGSMITH_LOG_CONTENT", "").lower() in {"true", "1", "yes"}
+
+
 class Decision(BaseModel):
     action: Literal["tool", "clarify", "finish"]
     tool_name: str | None = None
@@ -94,9 +99,11 @@ class GeminiModel:
 
     def generate(self, prompt: str, schema: type[BaseModel]) -> BaseModel:
         from google.genai import types
-        with trace("gemini-generate", run_type="llm",
-                   inputs={"prompt_hash": hashlib.sha256(prompt.encode()).hexdigest()[:16],
-                           "schema": schema.__name__},
+        inputs = {"prompt_hash": hashlib.sha256(prompt.encode()).hexdigest()[:16],
+                  "schema": schema.__name__}
+        if trace_content_enabled():
+            inputs["prompt"] = prompt
+        with trace("gemini-generate", run_type="llm", inputs=inputs,
                    metadata={"model": self.name}) as span:
             response = self.client.models.generate_content(
                 model=self.name, contents=prompt,
@@ -294,7 +301,10 @@ class SupportAgent:
         with trace("support.request", run_type="chain", inputs={"case_id": case.get("id"),
                    "order_id": case.get("order_id")}, metadata=metadata) as parent:
             with trace("skill.select/load", run_type="chain", inputs={"domain": "support"}) as span:
-                span.end(outputs={"id": skill["id"], "version": skill["version"], "hash": skill["hash"]})
+                skill_output = {"id": skill["id"], "version": skill["version"], "hash": skill["hash"]}
+                if trace_content_enabled():
+                    skill_output["content"] = skill["content"]
+                span.end(outputs=skill_output)
             with trace("memory.index", run_type="chain", inputs={"customer_id": customer_id or case.get("customer_id", "demo-customer")}) as span:
                 memory_available = bool(self.case_memory and self.case_memory.has_relevant(
                     customer_id or case.get("customer_id", "demo-customer"), case["message"]))
