@@ -1,7 +1,7 @@
-"""Publish held-out datasets and real Gemini experiments to LangSmith."""
-
+"""Publish already-run heldout outputs to LangSmith without reusing heldout for tuning."""
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -10,67 +10,47 @@ from langsmith import Client
 from .evaluators import load_cases
 
 
-def compare_in_langsmith(agent, run_dir: Path, candidate_rules: list[str]) -> dict:
+def publish_saved_comparison(run_dir: Path) -> dict:
     if not os.getenv("LANGSMITH_API_KEY"):
-        raise RuntimeError("Set LANGSMITH_API_KEY to publish LangSmith experiments")
+        raise RuntimeError("Set LANGSMITH_API_KEY to publish saved experiments")
+    run_dir = Path(run_dir)
+    if not (run_dir / "comparison.json").exists():
+        raise ValueError("Run the heldout comparison once before publishing")
     client = Client()
     cases = load_cases("heldout")
-    case_by_id = {case["id"]: case for case in cases}
     dataset_name = f"support-agent-heldout-{run_dir.name}"
     if not client.has_dataset(dataset_name=dataset_name):
-        client.create_dataset(dataset_name, description="Fictional holdout cases for the agent improvement demo")
-        client.create_examples(dataset_name=dataset_name, examples=[
-            {
-                "inputs": {"case_id": case["id"], "order_id": case["order_id"], "message": case["message"]},
-                "outputs": {"expected_action": case["expected_action"], "required_policy": case["required_policy"]},
-                "metadata": {"split": "heldout"},
-            }
-            for case in cases
-        ])
+        client.create_dataset(dataset_name, description="Fictional heldout support cases")
+        client.create_examples(dataset_name=dataset_name, examples=[{
+            "inputs": {"case_id": case["id"]},
+            "outputs": {"expected_action": case["expected_action"], "required_policy": case["required_policy"]},
+            "metadata": {"split": "heldout", "fictional": True},
+        } for case in cases])
 
-    def target_for(rules: list[str], label: str):
-        def target(inputs: dict) -> dict:
-            case = case_by_id[inputs["case_id"]]
-            trace = agent.run_case(case, rules, version=label)
-            result = trace["steps"][-1]["output"]
-            return {
-                "action": result["action"],
-                "policy_ids": result["policy_ids"],
-                "customer_reply": result["customer_reply"],
-                "tool_names": [step.get("name") for step in trace["steps"] if step.get("type") == "tool"],
-                "retrieved_policy_ids": [policy["id"] for step in trace["steps"]
-                                         if step.get("name") == "search_policy" for policy in step["output"]],
-            }
-        return target
+    def target(label: str):
+        def read_saved(inputs: dict) -> dict:
+            path = run_dir / "traces" / label / f"{inputs['case_id']}.json"
+            trajectory = json.loads(path.read_text())
+            return {"action": trajectory["resolution"]["action"],
+                    "policy_ids": trajectory["resolution"].get("policy_ids", []),
+                    "trace_id": trajectory["trace_id"],
+                    "langsmith_run_id": trajectory.get("langsmith_run_id")}
+        return read_saved
 
-    def resolution_correct(run, example):
-        return {"key": "resolution_correct", "score": int(
-            (run.outputs or {}).get("action") == (example.outputs or {}).get("expected_action")
-        )}
+    def action_correct(run, example):
+        return {"key": "action_correct", "score": int((run.outputs or {}).get("action") ==
+                (example.outputs or {}).get("expected_action"))}
 
-    def required_tool_usage(run, example):
-        return {"key": "required_tool_usage", "score": int(
-            {"get_order_details", "search_policy", "create_resolution"} <=
-            set((run.outputs or {}).get("tool_names", []))
-        )}
+    def policy_cited(run, example):
+        return {"key": "policy_cited", "score": int((example.outputs or {}).get("required_policy") in
+                (run.outputs or {}).get("policy_ids", []))}
 
-    def policy_compliance(run, example):
-        output = run.outputs or {}
-        required = (example.outputs or {}).get("required_policy")
-        cited = set(output.get("policy_ids", []))
-        retrieved = set(output.get("retrieved_policy_ids", []))
-        return {"key": "policy_compliance", "score": int(required in cited and cited <= retrieved)}
-
-    evaluators = [resolution_correct, required_tool_usage, policy_compliance]
     experiments = {}
-    for label, rules in (("baseline", []), ("learned", candidate_rules)):
-        results = client.evaluate(
-            target_for(rules, label),
-            data=dataset_name,
-            evaluators=evaluators,
-            experiment_prefix=f"support-agent-{label}",
-            description=f"{label} Gemini support agent on untouched holdout cases",
-            max_concurrency=1,
-        )
-        experiments[label] = getattr(results, "experiment_name", None) or f"support-agent-{label}"
-    return {"dataset": dataset_name, "experiments": experiments}
+    for label in ("baseline-heldout", "learned-heldout"):
+        results = client.evaluate(target(label), data=dataset_name,
+                                  evaluators=[action_correct, policy_cited],
+                                  experiment_prefix=f"support-agent-{label}", max_concurrency=1,
+                                  description="Evaluation of saved Gemini outputs; no new model calls")
+        experiments[label] = getattr(results, "experiment_name", None) or label
+    return {"dataset": dataset_name, "experiments": experiments,
+            "note": "Published saved outputs; heldout was not rerun"}

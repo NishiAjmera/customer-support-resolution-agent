@@ -1,82 +1,58 @@
 # Agent Improvement Lab
 
-A six-stage, 20-minute demo of a self-improving customer-support resolution agent. Gemini makes the policy selection and recommendation; fictional order and policy APIs are mocked. LangGraph runs the agent, SQLite versions procedural lessons, and LangSmith can trace runs and compare evaluation experiments. No tool issues a real refund or changes an order.
+A fictional customer-support agent that recommends resolutions, evaluates its own traces, and tests versioned procedural updates. Gemini chooses read-only information tools inside a bounded LangGraph loop. A separate controller can propose a skill patch after an externally scored failure. No order, payment, refund, shipment, or warranty action is executed.
 
-## Repository
+## Setup with uv
 
-```text
-agent/
-  graph.py          LangGraph and Gemini model
-  tools.py          get_order_details, search_policy, create_resolution
-  prompts.py        structured outputs and baseline instructions
-  memory.py         LangGraph store cache of active procedural memory
-  data/             fictional orders and authoritative policies
-learning/
-  reflection.py     lesson proposal and policy review
-  lesson_store.py   SQLite version history and rollback
-  promotion_gate.py validation gate
-evals/
-  train_cases.json
-  validation_cases.json
-  heldout_cases.json
-  evaluators.py     deterministic scores and local reports
-  langsmith_experiments.py  remote dataset and experiment comparison
-experiments/
-  baseline.json     baseline configuration
-  candidate.json    candidate artifact specification
-app/
-  demo_dashboard.py six-stage artifact viewer
-demo.py             presentation commands
-DEMO_GUIDE.md       presenter notes
-```
-
-## Setup
-
-Requires [uv](https://docs.astral.sh/uv/getting-started/installation/), Python 3.11+, and a Gemini API key. `uv sync` creates and manages `.venv` automatically.
+Requires Python 3.11+, [uv](https://docs.astral.sh/uv/getting-started/installation/), and a Gemini API key.
 
 ```bash
 uv sync --locked
 cp .env.example .env
-# Add GEMINI_API_KEY to .env. Keep .env private.
-uv run python demo.py demo
-UV_HTTP_TIMEOUT=120 uv sync --locked --extra dashboard
+# Put GEMINI_API_KEY in .env, then run:
+uv run --locked python demo.py case --case-id C-14
+```
+
+`GEMINI_MODEL` defaults to `gemini-2.5-flash`. To send traces to LangSmith, set `LANGSMITH_API_KEY`, `LANGSMITH_TRACING=true`, and `LANGSMITH_PROJECT=agent-improvement-lab` in `.env`. The same local JSON trajectory is saved when LangSmith is unavailable. Keep `.env` private.
+
+For the customer chat and operator viewer:
+
+```bash
+uv sync --locked --extra dashboard
+uv run --locked --extra dashboard streamlit run app/customer_chat.py
 uv run --locked --extra dashboard streamlit run app/demo_dashboard.py
 ```
 
-`uv.lock` pins the resolved dependencies. The dashboard is optional and downloads large packages, so install it only when you want the Streamlit viewer.
-
-To use LangSmith, set `LANGSMITH_API_KEY`, `LANGSMITH_TRACING=true`, and `LANGSMITH_PROJECT=agent-improvement-lab` in `.env`. The graph and Gemini calls then appear in LangSmith. `uv run python demo.py compare --publish-langsmith` also creates a heldout dataset and runs fresh baseline and learned experiments with deterministic evaluators. That command makes additional Gemini calls. Local JSON traces and scores work without a LangSmith key.
-
-The default model is `gemini-2.5-flash`; set `GEMINI_MODEL` to change it. The full 24-case demo makes many model calls and may incur Gemini and LangSmith usage charges. Run it once before presenting, then use the saved artifacts and one fresh case live.
+The customer chat is a small demonstration using fictional orders. Browser session state holds the conversation; restarting Streamlit starts a new conversation. Case memory is separately persisted in SQLite. There is no ownership authentication.
 
 ## Six stages
 
 ```bash
-uv run python demo.py case --case-id C-01              # 1–2: agent and visible failure
-uv run python demo.py baseline                         # 3: 8 training cases
-uv run python demo.py learn                            # 4: reflect, policy-check, validate, promote
-uv run python demo.py compare                          # 5: 8 untouched holdout cases, both versions
-uv run python demo.py case --case-id C-09 --version active  # fresh unseen-case check
-uv run python demo.py safeguard                        # 6: reject the bad refund rule
-uv run python demo.py rollback                         # restore the prior active version if needed
+uv run --locked python demo.py baseline
+uv run --locked python demo.py diagnose
+uv run --locked python demo.py propose
+uv run --locked python demo.py validate
+uv run --locked python demo.py promote
+uv run --locked python demo.py compare
+uv run --locked python demo.py publish-langsmith
+uv run --locked python demo.py safeguard
+uv run --locked python demo.py rollback
 ```
 
-`uv run python demo.py demo` runs all six stages in one command. Artifacts go to `runs/<timestamp>/`: traces, score reports, `candidate.json`, `comparison.json`, `bad-update.json`, and `lessons.sqlite`. `runs/latest.txt` selects the last run for subsequent commands. The generated lesson is an instruction version in SQLite; no Gemini model weights are changed.
+`demo.py demo` runs the sequence, including the bad-update probe. `--run-dir PATH` selects a run; otherwise commands use `runs/latest.txt`. `--trace-id UUID` selects a specific failed training trace. `case --case-id C-07 --version active` checks a promoted skill. `--skill-version ID` loads a particular stored version, and `--memory-snapshot PATH` loads an existing case-memory SQLite snapshot for a single case. Paired validation and holdout runs create their own frozen snapshots. `reject` records an operator rejection. `seed-memory` inserts a clearly labeled fictional prior day-eight defect recommendation for the memory walkthrough. `record-memory --case-id C-03` records a proposed summary after a saved single-case assessment. `publish-langsmith` publishes the saved heldout outputs as LangSmith experiments without making new Gemini calls.
 
-The lesson sees failed **training** traces, evaluator feedback, and policy text. A separate policy review and validation suite gate promotion. The holdout set is never included in reflection or validation. If there is no training failure or no validated improvement, the result says so instead of inventing a win. The intentional bad rule is rejected for contradicting the defect policy, and its safety-suite failures remain inspectable. `rollback` is available for a previously promoted lesson.
+The baseline run scores eight training cases and queues one job for each observed failure. The controller diagnoses one selected job using trace step IDs, proposes a skill patch against `skills.md`, reviews it against current policies, runs paired validation and an independent safety suite, then promotes only if at least one validation failure is fixed with no passing-case regression or new critical failure. The promoted text is saved as `runs/<run>/active-skills.md` and in SQLite. `rollback` restores its previous active version across process restarts. The eight heldout cases are run once for final comparison; subsequent `compare` calls read the saved report.
 
-The deterministic scores cover resolution correctness, required tool usage, policy citation compliance, and a narrow unsupported-claim check for falsely completed actions. They do not replace human review of real support language.
+`skills.md` is the initial v1 procedure. It deliberately omits an explicit final-sale defect precedence rule. A real Gemini run may or may not fail on that gap; diagnose only an observed failure. Saved deterministic tests are orchestration checks, not live Gemini findings. The intentionally misleading refund shortcut is tested as an isolated candidate and remains inactive. The safety layer also checks current order and policy facts before any non-escalation recommendation is shown.
+
+The three functions in `agent/tools.py` are `get_order_details`, `search_policy`, and `create_resolution`. The first two read fictional data; the third validates a recommendation. `retrieve_case_memory` is an optional read from `agent/case_memory.py`. A controller-gated write records only short, scoped summaries with provenance and a proposed or human-confirmed status. A proposed action is never recorded as an executed outcome. Tombstones preserve corrections in the audit trail.
+
+`runs/` contains per-case trajectories, evaluator reports, improvement jobs with skill diffs and gate decisions, versioned SQLite data, and a final comparison. The reports include trace IDs and LangSmith run IDs when available. Inspect actual scores before a presentation; no improvement is guaranteed by a model call.
 
 ## Tests
 
 ```bash
-uv run python -m unittest discover -s tests -v
+uv run --locked python -m unittest discover -s tests -v
 ```
 
-Tests use a fake model to verify orchestration, gating, and rollback. Their scores are simulations, never presented as live Gemini results. A real Gemini run requires your API key.
-
-## References
-
-- [LangGraph graph API](https://docs.langchain.com/oss/python/langgraph/use-graph-api)
-- [LangSmith evaluation](https://docs.langchain.com/langsmith/evaluation-types)
-- [Google Gen AI Python SDK](https://googleapis.github.io/python-genai/)
+The tests use deterministic fake model decisions to verify graph bounds, optional tool trajectories, memory scope, chat intake, the policy gate, heldout reuse, and rollback. They do not establish a live Gemini success rate.

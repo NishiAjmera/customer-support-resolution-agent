@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import hashlib
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from agent.skills import SKILL_FILE
 
 
 class LessonStore:
@@ -27,6 +29,11 @@ class LessonStore:
                     created_at TEXT NOT NULL
                 )
             """)
+            columns = {row[1] for row in db.execute("PRAGMA table_info(versions)")}
+            for name, sql_type in (("content", "TEXT"), ("content_hash", "TEXT"),
+                                   ("diagnosis_json", "TEXT"), ("evidence_json", "TEXT")):
+                if name not in columns:
+                    db.execute(f"ALTER TABLE versions ADD COLUMN {name} {sql_type}")
 
     @contextmanager
     def _connect(self):
@@ -43,18 +50,28 @@ class LessonStore:
         if row is None:
             return None
         result = dict(row)
-        for key in ("rules_json", "source_cases_json", "policy_review_json", "validation_json"):
+        for key in ("rules_json", "source_cases_json", "policy_review_json", "validation_json",
+                    "diagnosis_json", "evidence_json"):
             value = result.pop(key)
             result[key.removesuffix("_json")] = json.loads(value) if value else None
         return result
 
-    def create_candidate(self, rules: list[str], source_cases: list[str]) -> dict:
+    def create_candidate(self, rules: list[str], source_cases: list[str], content: str | None = None,
+                         diagnosis: dict | None = None, evidence: list[str] | None = None) -> dict:
         if not rules:
             raise ValueError("A lesson candidate must have at least one rule")
+        current = self.active()
+        old = current["content"] if current and current.get("content") else SKILL_FILE.read_text()
+        content = content or (old + "\n## Validated lessons\n" + "\n".join(f"- {rule}" for rule in rules) + "\n")
+        content_hash = hashlib.sha256(content.encode()).hexdigest()[:16]
         with self._connect() as db:
             cursor = db.execute(
-                "INSERT INTO versions (rules_json, source_cases_json, status, created_at) VALUES (?, ?, ?, ?)",
-                (json.dumps(rules), json.dumps(source_cases), "draft", datetime.now(timezone.utc).isoformat()),
+                """INSERT INTO versions (rules_json, source_cases_json, status, created_at,
+                   content, content_hash, diagnosis_json, evidence_json, parent_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (json.dumps(rules), json.dumps(source_cases), "draft", datetime.now(timezone.utc).isoformat(),
+                 content, content_hash, json.dumps(diagnosis) if diagnosis else None,
+                 json.dumps(evidence or []), current["id"] if current else None),
             )
             version_id = cursor.lastrowid
         return self.get(version_id)
@@ -100,6 +117,7 @@ class LessonStore:
             db.execute("UPDATE versions SET status = 'archived' WHERE status = 'active'")
             db.execute("UPDATE versions SET status = 'active', parent_id = ? WHERE id = ?",
                        (current["id"] if current else None, version_id))
+        self._write_active_artifact(candidate["content"])
         return self.get(version_id)
 
     def rollback(self) -> dict | None:
@@ -110,4 +128,12 @@ class LessonStore:
             db.execute("UPDATE versions SET status = 'rolled_back' WHERE id = ?", (current["id"],))
             if current["parent_id"] is not None:
                 db.execute("UPDATE versions SET status = 'active' WHERE id = ?", (current["parent_id"],))
+        active = self.active()
+        self._write_active_artifact(active["content"] if active and active.get("content") else SKILL_FILE.read_text())
         return self.active()
+
+    def _write_active_artifact(self, content: str) -> None:
+        artifact = self.path.parent / "active-skills.md"
+        temporary = artifact.with_suffix(".tmp")
+        temporary.write_text(content)
+        temporary.replace(artifact)

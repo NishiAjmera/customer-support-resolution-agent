@@ -9,7 +9,7 @@ from learning.lesson_store import LessonStore
 
 st.set_page_config(page_title="Agent Improvement Lab", layout="wide")
 st.title("Agent Improvement Lab")
-st.caption("One agent · two versions · measured learning")
+st.caption("Fictional orders · inspectable decisions · measured procedural updates")
 
 latest = Path("runs/latest.txt")
 default = latest.read_text().strip() if latest.exists() else ""
@@ -41,26 +41,38 @@ if run_dir is None:
     st.info("Run `uv run python demo.py demo` first, or enter an existing run directory in the sidebar.")
 else:
     st.sidebar.caption(str(run_dir.resolve()))
-    tabs = st.tabs(["1 Baseline", "2 Failure", "3 Evaluate", "4 Learn", "5 Verify", "6 Safeguard"])
+    tabs = st.tabs(["Graph", "Failure trace", "Evaluation", "Improvement job", "Heldout", "Safety"])
     with tabs[0]:
-        st.subheader("The baseline LangGraph agent")
-        st.code("plan_tools → get_order_details → search_policy → create_resolution")
-        st.write("Order and policy functions read fictional records. Gemini chooses policies and proposes a resolution.")
+        st.subheader("Bounded LangGraph agent")
+        st.code("decide → dispatch read-only tool → decide\ndecide → final recommendation or clarification")
+        st.write("Gemini chooses a read-only information tool or a recommendation. The dispatcher and final policy check enforce safety bounds.")
     with tabs[1]:
         st.subheader("Follow one execution")
         trace_dir = run_dir / "traces" / "baseline-train"
         traces = sorted(trace_dir.glob("*.json")) if trace_dir.exists() else []
         if traces:
             chosen = st.selectbox("Case trace", traces, format_func=lambda p: p.stem)
-            st.json(json.loads(chosen.read_text()))
+            trajectory = json.loads(chosen.read_text())
+            st.write("Skill", trajectory.get("skill"), "Memory IDs", trajectory.get("retrieved_memory_ids"))
+            if trajectory.get("langsmith_run_id"):
+                st.caption(f"LangSmith run ID: {trajectory['langsmith_run_id']}")
+            st.json(trajectory)
         else:
             st.info("Run `uv run python demo.py baseline` to save baseline traces.")
     with tabs[2]:
         st.subheader("Baseline evaluation")
         show_report("baseline-train.json")
     with tabs[3]:
-        st.subheader("Candidate lesson and validation gate")
-        show_report("candidate.json")
+        st.subheader("Evidence, skill diff, paired validation and gate")
+        jobs = sorted((run_dir / "jobs").glob("*.json")) if (run_dir / "jobs").exists() else []
+        if jobs:
+            selected_job = st.selectbox("Improvement job", jobs, format_func=lambda p: json.loads(p.read_text()).get("case_id", p.stem))
+            job = json.loads(selected_job.read_text())
+            st.json({key: value for key, value in job.items() if key != "diff"})
+            if job.get("diff"):
+                st.code(job["diff"], language="diff")
+        else:
+            st.info("Run baseline, then diagnose/propose/validate/promote to create a job.")
         if (run_dir / "lessons.sqlite").exists():
             st.dataframe(LessonStore(run_dir / "lessons.sqlite").list_versions(), use_container_width=True)
         with st.expander("Validation case scores"):

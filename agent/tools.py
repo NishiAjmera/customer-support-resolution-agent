@@ -2,7 +2,6 @@
 
 import json
 from pathlib import Path
-from typing import Any
 
 from .prompts import Resolution
 
@@ -28,6 +27,6 @@ def search_policy(policy_ids: list[str], policies: dict[str, dict]) -> list[dict
     return [policies[pid].copy() for pid in dict.fromkeys(policy_ids)]
 
 
-def create_resolution(model: Any, prompt: str) -> dict:
-    """Generate a recommendation; this never executes a business action."""
-    return model.generate(prompt, Resolution).model_dump()
+def create_resolution(recommendation: dict) -> dict:
+    """Validate a proposed recommendation; never execute a business action."""
+    return Resolution.model_validate(recommendation).model_dump()

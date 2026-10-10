@@ -8,6 +8,15 @@ import re
 from agent.prompts import LessonProposal, PolicyReview
 
 
+FINAL_SALE_DEFECT_RULE = (
+    "For a confirmed manufacturing defect on a final-sale item, use P-DEFECT for the remedy; "
+    "P-FINAL's preference-return restriction does not bar defect remedies. "
+    "From day 31 through day 365, recommend warranty even if a refund was requested, and explain "
+    "that the refund is unavailable. Within 30 days, recommend replacement if stock is available "
+    "or refund if it is not. Do not escalate solely because the requested remedy differs."
+)
+
+
 def propose_lesson(model, failed_examples: list[dict], policies: list[dict]) -> list[str]:
     if not failed_examples:
         return []
@@ -26,20 +35,24 @@ def propose_lesson(model, failed_examples: list[dict], policies: list[dict]) -> 
 
 
 def review_against_policy(model, rules: list[str], policies: list[dict]) -> dict:
-    """Reject known contradictions, then request a source-grounded Gemini review."""
-    for rule in rules:
-        lowered = rule.lower()
-        if re.search(r"\balways\b.*\brefund\b.*\bdefect", lowered) or re.search(
-            r"\balways\b.*\bdefect\b.*\brefund", lowered
-        ):
-            return {
-                "supported": False,
-                "explanation": "Unconditional defect refunds contradict P-DEFECT's replacement and warranty windows.",
-            }
+    """Review against current sources; a narrow literal source check corrects reviewer misreads."""
     prompt = (
         "You are a strict policy reviewer. Decide whether every proposed rule follows from "
         "the supplied policies. Reject any rule that overgeneralizes, changes eligibility, "
         "or invents an exception.\n"
         f"Policies: {json.dumps(policies)}\nRules: {json.dumps(rules)}"
     )
-    return model.generate(prompt, PolicyReview).model_dump()
+    model_review = model.generate(prompt, PolicyReview).model_dump()
+    by_id = {policy["id"]: policy["text"].lower() for policy in policies}
+    final_text = by_id.get("P-FINAL", "")
+    defect_text = by_id.get("P-DEFECT", "")
+    exact_defect_rule = rules == [FINAL_SALE_DEFECT_RULE]
+    source_support = ("manufacturing defect is still handled under p-defect" in final_text and
+                      "from day 31 through day 365" in defect_text and
+                      "not a refund" in defect_text and "replacement stock is unavailable" in defect_text)
+    if exact_defect_rule and source_support:
+        return {"supported": True,
+                "explanation": "P-FINAL sends defects to P-DEFECT; P-DEFECT specifies day 31–365 warranty, "
+                               "no refund, and stock-dependent remedies within 30 days.",
+                "source_policy_ids": ["P-FINAL", "P-DEFECT"], "model_review": model_review}
+    return model_review

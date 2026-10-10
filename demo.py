@@ -1,21 +1,21 @@
-"""Run the six stages of the customer-support improvement demo."""
-
+"""Six-stage Gemini support-agent improvement demo."""
 from __future__ import annotations
 
 import argparse
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-from agent.graph import GeminiModel, SupportAgent
-from agent.memory import ProceduralMemory
-from evals.evaluators import load_cases, run_suite, save_json
+from agent.case_memory import CaseMemory
+from agent.graph import GeminiModel, SupportAgent, policy_hash
+from agent.skills import SKILL_FILE, patched_skill
+from evals.evaluators import grade, load_cases, run_suite, save_json
+from learning.controller import ImprovementController, SAFETY_IDS
 from learning.lesson_store import LessonStore
 from learning.promotion_gate import evaluate_gate
-from learning.reflection import propose_lesson, review_against_policy
+from learning.reflection import review_against_policy
 
 
 def find_case(case_id: str) -> dict:
@@ -26,171 +26,196 @@ def find_case(case_id: str) -> dict:
     raise ValueError(f"Unknown case: {case_id}")
 
 
-def baseline(agent: SupportAgent, run_dir: Path) -> dict:
-    print("Stage 1–3: baseline agent, observed failure, and evaluation")
-    return run_suite(agent, load_cases("train"), run_dir, "baseline-train")
+def _jobs(run_dir: Path) -> list[dict]:
+    return [json.loads(path.read_text()) for path in sorted((run_dir / "jobs").glob("*.json"))] if (run_dir / "jobs").exists() else []
 
 
-def learn(agent: SupportAgent, store: LessonStore, run_dir: Path) -> dict:
-    train_path = run_dir / "baseline-train.json"
-    training = json.loads(train_path.read_text()) if train_path.exists() else baseline(agent, run_dir)
-    failed_ids = {row["case_id"] for row in training["grades"] if not row["pass"]}
-    if not failed_ids:
-        result = {"accepted": False, "reason": "No training failure; no lesson proposed."}
-        save_json(run_dir / "candidate.json", result)
-        return result
-    failed_examples = []
-    for case_id in sorted(failed_ids):
-        trace_path = run_dir / "traces" / "baseline-train" / f"{case_id}.json"
-        if trace_path.exists():
-            case = find_case(case_id)
-            grade = next(row for row in training["grades"] if row["case_id"] == case_id)
-            failed_examples.append({
-                "request": case["message"],
-                "order_facts": agent.orders[case["order_id"]],
-                "trace": json.loads(trace_path.read_text()),
-                "evaluator_feedback": grade,
-            })
-    if not failed_examples:
-        result = {"accepted": False, "reason": "Failures had no usable traces."}
-        save_json(run_dir / "candidate.json", result)
-        return result
+def _choose_job(run_dir: Path, trace_id: str | None = None) -> dict:
+    jobs = _jobs(run_dir)
+    if trace_id:
+        jobs = [job for job in jobs if job["trace_id"] == trace_id]
+    if not jobs:
+        raise ValueError("No assessed failure job. Run baseline first.")
+    return next((j for j in jobs if j["case_id"] == "C-14"), jobs[0])
 
-    print("Stage 4: reflect, check policy, and store a candidate lesson")
-    rules = propose_lesson(agent.model, failed_examples, list(agent.policies.values()))
-    version = store.create_candidate(rules, sorted(failed_ids))
-    review = review_against_policy(agent.model, rules, list(agent.policies.values()))
-    store.record_review(version["id"], review)
-    print("Validation: baseline")
-    base_report = run_suite(agent, load_cases("validation"), run_dir, "baseline-validation")
-    print("Validation: candidate")
-    candidate_report = run_suite(agent, load_cases("validation"), run_dir, "candidate-validation", rules)
-    gate = evaluate_gate(base_report, candidate_report, review)
-    store.record_validation(version["id"], gate)
-    if gate["accepted"]:
-        store.promote(version["id"])
-        if agent.memory:
-            agent.memory.refresh()
+
+def baseline(agent: SupportAgent, controller: ImprovementController, run_dir: Path) -> dict:
+    report = run_suite(agent, load_cases("train"), run_dir, "baseline-train", rules=[],
+                       memory_snapshot_id="train-pristine")
+    for row in report["grades"]:
+        if row["pass"]:
+            continue
+        path = run_dir / "traces" / "baseline-train" / f"{row['case_id']}.json"
+        if path.exists():
+            controller.enqueue(find_case(row["case_id"]), json.loads(path.read_text()), row)
+    return report
+
+
+def advance(controller: ImprovementController, run_dir: Path, stage: str,
+            trace_id: str | None = None) -> dict:
+    job = _choose_job(run_dir, trace_id)
+    case = find_case(job["case_id"])
+    trajectory = json.loads((run_dir / "traces" / "baseline-train" / f"{case['id']}.json").read_text())
+    stages = ["diagnose", "propose", "review", "validate", "promote"]
+    for action in stages[:stages.index(stage) + 1]:
+        if action == "diagnose" and job["status"] == "queued":
+            job = controller.diagnose(job, case, trajectory)
+        elif action == "propose" and job["status"] == "diagnosed":
+            job = controller.propose(job, case, trajectory)
+        elif action == "review" and job["status"] == "proposed":
+            job = controller.refresh_review(job)
+        elif action == "validate" and job["status"] == "proposed":
+            job = controller.validate(job)
+        elif action == "promote" and job["status"] == "validated":
+            job = controller.decide(job)
+    return job
+
+
+def compare(agent: SupportAgent, store: LessonStore, run_dir: Path) -> dict:
+    path = run_dir / "comparison.json"
+    if path.exists():
+        return json.loads(path.read_text())
+    active = store.active()
+    if not active:
+        raise ValueError("No promoted version to compare; validate and promote first")
+    cases = load_cases("heldout")
+    if agent.case_memory:
+        frozen, snapshot = agent.case_memory.snapshot(run_dir / "heldout-memory.sqlite")
+        paired_agent = SupportAgent(agent.model, case_memory=frozen, skill_store=store)
     else:
-        store.reject(version["id"], gate["reason"])
-    result = {"version_id": version["id"], "rules": rules, **gate}
-    save_json(run_dir / "candidate.json", result)
-    return result
-
-
-def compare(agent: SupportAgent, store: LessonStore, run_dir: Path, publish: bool = False) -> dict:
-    candidate_path = run_dir / "candidate.json"
-    if not candidate_path.exists():
-        learn(agent, store, run_dir)
-    candidate = json.loads(candidate_path.read_text())
-    print("Stage 5: baseline on untouched holdout cases")
-    baseline_report = run_suite(agent, load_cases("heldout"), run_dir, "baseline-heldout")
-    if candidate["accepted"]:
-        print("Stage 5: promoted version on the same holdout cases")
-        learned_report = run_suite(agent, load_cases("heldout"), run_dir, "learned-heldout", candidate["rules"])
-    else:
-        learned_report = None
-    result = {
-        "candidate_accepted": candidate["accepted"],
-        "baseline": baseline_report["summary"],
-        "learned": learned_report["summary"] if learned_report else None,
-        "baseline_grades": baseline_report["grades"],
-        "learned_grades": learned_report["grades"] if learned_report else None,
-    }
-    save_json(run_dir / "comparison.json", result)
-    if publish and learned_report:
-        from evals.langsmith_experiments import compare_in_langsmith
-
-        result["langsmith"] = compare_in_langsmith(agent, run_dir, candidate["rules"])
-        save_json(run_dir / "comparison.json", result)
+        paired_agent, snapshot = agent, "no-memory"
+    base = run_suite(paired_agent, cases, run_dir, "baseline-heldout", rules=[],
+                     memory_snapshot_id=snapshot)
+    candidate = run_suite(paired_agent, cases, run_dir, "learned-heldout", use_active=True,
+                          memory_snapshot_id=snapshot)
+    result = {"baseline": base["summary"], "learned": candidate["summary"],
+              "baseline_grades": base["grades"], "learned_grades": candidate["grades"],
+              "skill_version": active["id"], "heldout_used_once": True}
+    save_json(path, result)
     return result
 
 
 def safeguard(agent: SupportAgent, store: LessonStore, run_dir: Path) -> dict:
-    print("Stage 6: reject an overgeneralized refund rule")
-    active_before = store.active()
-    bad_rule = "Always approve a refund for defective products."
-    version = store.create_candidate([bad_rule], ["intentional-demo-update"])
-    review = review_against_policy(agent.model, [bad_rule], list(agent.policies.values()))
-    store.record_review(version["id"], review)
-    safety_cases = [find_case(case_id) for case_id in ("C-04", "C-03", "C-14", "C-22", "C-23")]
-    print("Policy-compliance regression suite")
-    bad_report = run_suite(agent, safety_cases, run_dir, "bad-update-safety", [bad_rule])
-    store.reject(version["id"], review["explanation"] if not review["supported"] else "Safety candidate is never auto-promoted")
-    active_after = store.active()
-    result = {
-        "bad_version_id": version["id"],
-        "rule": bad_rule,
-        "policy_review": review,
-        "safety_scores": bad_report["summary"],
-        "rejected": store.get(version["id"])["status"] == "rejected",
-        "active_version_unchanged": (active_before or {}).get("id") == (active_after or {}).get("id"),
-        "rollback_command": "uv run python demo.py rollback",
-    }
+    active = store.active()
+    old = active["content"] if active else SKILL_FILE.read_text()
+    rule = "If a product is defective, prioritize the customer's requested refund."
+    candidate = store.create_candidate([rule], ["isolated-bad-update"], content=patched_skill(old, rule),
+                                       diagnosis={"category": "intentional_safety_probe"})
+    review = review_against_policy(agent.model, [rule], list(agent.policies.values()))
+    store.record_review(candidate["id"], review)
+    cases = [case for case in load_cases("train") + load_cases("validation") if case["id"] in SAFETY_IDS]
+    base = run_suite(agent, cases, run_dir, "safeguard-baseline", use_active=bool(active))
+    bad = run_suite(agent, cases, run_dir, "safeguard-candidate", use_active=True,
+                    skill_version=candidate["id"])
+    gate = evaluate_gate(base, bad, review, bad)
+    store.record_validation(candidate["id"], gate)
+    if gate["accepted"]:
+        # This fixture is explicitly a disallowed policy broadening, irrespective of model agreement.
+        gate = {**gate, "accepted": False, "reason": "Candidate broadens refund eligibility beyond P-DEFECT"}
+        store.record_validation(candidate["id"], gate)
+    store.reject(candidate["id"], gate["reason"])
+    result = {"candidate_id": candidate["id"], "policy_review": review,
+              "gate": gate, "rejected": True, "active_version_unchanged":
+              (active or {}).get("id") == (store.active() or {}).get("id")}
     save_json(run_dir / "bad-update.json", result)
     return result
 
 
+def seed_memory(agent: SupportAgent, case_memory: CaseMemory) -> dict:
+    existing = case_memory.retrieve("demo-customer", "O-103", "defect", policy_hash(agent.policies))
+    if existing:
+        return {"memory_id": existing[0]["memory_id"], "already_present": True}
+    memory_id = case_memory.write_case_memory(customer_id="demo-customer", order_id="O-104",
+        issue_type="defect", issue_summary="Confirmed defect at day 8; replacement stock unavailable",
+        policy_ids=["P-DEFECT"], policy_hash=policy_hash(agent.policies), recommendation="refund",
+        source_trace_id="fictional-seed", source_type="fixture", outcome_status="proposed")
+    return {"memory_id": memory_id, "already_present": False}
+
+
 def main() -> None:
     load_dotenv()
-    parser = argparse.ArgumentParser(description="Six-stage Gemini + LangGraph improvement demo")
-    parser.add_argument("command", choices=["case", "baseline", "learn", "compare", "safeguard", "rollback", "demo"])
-    parser.add_argument("--case-id", default="C-01")
-    parser.add_argument("--version", choices=["baseline", "active"], default="baseline",
-                        help="Version to use for the `case` command")
+    parser = argparse.ArgumentParser(description="Gemini + LangGraph support-agent improvement lab")
+    parser.add_argument("command", choices=["case", "baseline", "diagnose", "propose", "review", "validate",
+                                            "promote", "reject", "learn", "compare", "safeguard",
+                                            "rollback", "seed-memory", "record-memory", "publish-langsmith", "demo"])
+    parser.add_argument("--case-id", default="C-14")
+    parser.add_argument("--trace-id")
     parser.add_argument("--run-dir", type=Path)
-    parser.add_argument("--publish-langsmith", action="store_true", help="Run fresh LangSmith holdout experiments")
+    parser.add_argument("--skill-version", type=int)
+    parser.add_argument("--memory-snapshot", type=Path,
+                        help="Existing case-memory SQLite snapshot to use for a single case")
+    parser.add_argument("--version", choices=["baseline", "active"], default="baseline")
     args = parser.parse_args()
-
-    root = Path("runs")
-    latest = root / "latest.txt"
-    if args.command == "rollback":
-        if not latest.exists() and not args.run_dir:
-            raise SystemExit("No run to roll back. Pass --run-dir or run the demo first.")
-        run_dir = args.run_dir or Path(latest.read_text().strip())
-        current = LessonStore(run_dir / "lessons.sqlite").rollback()
-        print(json.dumps({"active_version": current["id"] if current else None}, indent=2))
-        return
-
-    try:
-        model = GeminiModel()
-    except RuntimeError as exc:
-        raise SystemExit(str(exc)) from exc
+    latest = Path("runs/latest.txt")
     if args.run_dir:
         run_dir = args.run_dir
-    elif args.command in {"baseline", "demo"} or (args.command == "case" and not latest.exists()):
-        run_dir = root / datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
-    elif latest.exists():
-        run_dir = Path(latest.read_text().strip())
+    elif args.command in {"baseline", "demo"} or not latest.exists():
+        run_dir = Path("runs") / datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
     else:
-        raise SystemExit("Start with `uv run python demo.py demo` or pass --run-dir.")
+        run_dir = Path(latest.read_text().strip())
     run_dir.mkdir(parents=True, exist_ok=True)
-    latest.parent.mkdir(parents=True, exist_ok=True)
+    latest.parent.mkdir(exist_ok=True)
     latest.write_text(str(run_dir.resolve()) + "\n")
     store = LessonStore(run_dir / "lessons.sqlite")
-    agent = SupportAgent(model, ProceduralMemory(store))
-    print(f"Artifacts: {run_dir.resolve()}")
-
+    if args.command == "rollback":
+        print(json.dumps({"active": store.rollback()}))
+        return
+    if args.command == "publish-langsmith":
+        from evals.langsmith_experiments import publish_saved_comparison
+        print(json.dumps(publish_saved_comparison(run_dir), indent=2))
+        return
+    if args.command == "reject":
+        job = _choose_job(run_dir, args.trace_id)
+        if "candidate_id" not in job:
+            raise SystemExit("Propose a candidate before rejection")
+        result = store.reject(job["candidate_id"], "Rejected by operator")
+        save_json(run_dir / "jobs" / f"{job['trace_id']}.json", {**job, "status": "rejected"})
+        print(json.dumps(result, indent=2))
+        return
+    model = GeminiModel()
+    if args.memory_snapshot and not args.memory_snapshot.exists():
+        raise SystemExit("The specified memory snapshot does not exist")
+    case_memory = CaseMemory(args.memory_snapshot or run_dir / "case-memory.sqlite")
+    agent = SupportAgent(model, case_memory=case_memory, skill_store=store)
+    controller = ImprovementController(agent, store, run_dir)
     if args.command == "case":
-        case = find_case(args.case_id)
-        active = store.active() if args.version == "active" else None
-        if args.version == "active" and active is None:
-            raise SystemExit("No active lesson version. Run `uv run python demo.py learn` first.")
-        result = run_suite(agent, [case], run_dir, f"single-{args.version}-{case['id']}",
-                           use_active=args.version == "active")
+        if args.version == "active" and not store.active() and not args.skill_version:
+            raise SystemExit("No active skill version has passed the gate")
+        rules = None if args.version == "active" or args.skill_version else []
+        result = agent.run_case(find_case(args.case_id), rules, version=args.version,
+                                skill_version=args.skill_version,
+                                memory_snapshot_id=args.memory_snapshot.name if args.memory_snapshot else "live")
+        save_json(run_dir / "traces" / "single" / f"{args.case_id}.json", result)
+        result = {"trajectory": result, "grade": grade(find_case(args.case_id), result)}
     elif args.command == "baseline":
-        result = baseline(agent, run_dir)
-    elif args.command == "learn":
-        result = learn(agent, store, run_dir)
+        result = baseline(agent, controller, run_dir)
+    elif args.command in {"diagnose", "propose", "review", "validate", "promote", "learn"}:
+        result = advance(controller, run_dir, "promote" if args.command == "learn" else args.command,
+                         args.trace_id)
     elif args.command == "compare":
-        result = compare(agent, store, run_dir, args.publish_langsmith)
+        result = compare(agent, store, run_dir)
     elif args.command == "safeguard":
         result = safeguard(agent, store, run_dir)
+    elif args.command == "seed-memory":
+        result = seed_memory(agent, case_memory)
+    elif args.command == "record-memory":
+        path = run_dir / "traces" / "single" / f"{args.case_id}.json"
+        if not path.exists():
+            raise SystemExit("Run the case in this run directory before recording its assessed summary")
+        trajectory = json.loads(path.read_text())
+        case = find_case(args.case_id)
+        result = {"memory_id": controller.record_assessed_case(case, trajectory, grade(case, trajectory),
+                                                               customer_id="demo-customer"),
+                  "outcome_status": "proposed"}
     else:
-        baseline(agent, run_dir)
-        learn(agent, store, run_dir)
-        compare(agent, store, run_dir, args.publish_langsmith)
-        result = safeguard(agent, store, run_dir)
+        training = baseline(agent, controller, run_dir)
+        if not _jobs(run_dir):
+            result = {"baseline": training["summary"], "improvement": "No assessed training failure"}
+        else:
+            job = advance(controller, run_dir, "promote", args.trace_id)
+            result = {"job": job, "safeguard": safeguard(agent, store, run_dir)}
+            if store.active():
+                result["comparison"] = compare(agent, store, run_dir)
     print(json.dumps(result, indent=2))
 
 
