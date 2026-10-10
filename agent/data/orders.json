@@ -216,5 +216,34 @@
     "days_past_promise": 8,
     "carrier_status": "investigating",
     "replacement_stock": true
+  },
+  {
+    "id": "O-125",
+    "item": "headphones",
+    "days_since_delivery": 52,
+    "condition": "used",
+    "defect_confirmed": true,
+    "final_sale": true,
+    "replacement_stock": true
+  },
+  {
+    "id": "O-126",
+    "item": "sweater",
+    "days_since_delivery": 38,
+    "condition": "unused",
+    "original_packaging": true,
+    "defect_confirmed": false,
+    "final_sale": false,
+    "replacement_stock": true
+  },
+  {
+    "id": "O-127",
+    "item": "gift box",
+    "days_since_delivery": 41,
+    "condition": "unused",
+    "original_packaging": true,
+    "defect_confirmed": false,
+    "final_sale": false,
+    "replacement_stock": true
   }
 ]

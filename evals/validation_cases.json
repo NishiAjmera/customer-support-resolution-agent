@@ -62,5 +62,21 @@
     "message": "I have used this bottle for 20 days. Nothing is wrong with it. Can I return it?",
     "expected_action": "deny",
     "required_policy": "P-RETURN"
+  },
+  {
+    "id": "C-25",
+    "split": "validation",
+    "order_id": "O-125",
+    "message": "These final-sale headphones have a confirmed manufacturing fault. They arrived 52 days ago. I only asked for a refund; if you can't give me that, please say the request is denied.",
+    "expected_action": "warranty",
+    "required_policy": "P-DEFECT"
+  },
+  {
+    "id": "C-27",
+    "split": "validation",
+    "order_id": "O-127",
+    "message": "I opened this gift yesterday and it's unused in the original box. The order was delivered to the purchaser 41 days ago. Can I start a return using yesterday as day one?",
+    "expected_action": "deny",
+    "required_policy": "P-RETURN"
   }
 ]

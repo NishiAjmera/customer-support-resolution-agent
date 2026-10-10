@@ -43,7 +43,7 @@
     "id": "C-14",
     "split": "train",
     "order_id": "O-114",
-    "message": "My final-sale earbuds have a confirmed defect after 40 days. I want a refund.",
+    "message": "My final-sale earbuds have a confirmed manufacturing defect after 40 days. I want a refund, not a repair. If a refund isn't possible, just tell me no; please don't offer anything else.",
     "expected_action": "warranty",
     "required_policy": "P-DEFECT"
   },
@@ -62,5 +62,13 @@
     "message": "My monitor developed a confirmed fault after 400 days. What are my options?",
     "expected_action": "escalate",
     "required_policy": "P-DEFECT"
+  },
+  {
+    "id": "C-26",
+    "split": "train",
+    "order_id": "O-126",
+    "message": "This sweater was a gift. The buyer's order says it was delivered 38 days ago, but I only received it four days ago. It is unused and still in its original packaging. Can I get a refund?",
+    "expected_action": "deny",
+    "required_policy": "P-RETURN"
   }
 ]

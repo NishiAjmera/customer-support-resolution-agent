@@ -3,6 +3,7 @@
 __pycache__/
 *.pyc
 runs/
+runs-v1/
 *.egg-info/
 .streamlit/
 build/

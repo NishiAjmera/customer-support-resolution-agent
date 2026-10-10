@@ -15,8 +15,9 @@ from agent.tools import load_records
 from demo import advance, baseline, compare, safeguard
 from evals.evaluators import grade, load_cases
 from evals.langsmith_experiments import publish_saved_comparison
-from learning.controller import ImprovementController, diagnose_case
+from learning.controller import FailureDiagnosis, ImprovementController, diagnose_case
 from learning.lesson_store import LessonStore
+from agent.skills import SKILL_FILE
 
 CASES = {case["id"]: case for split in ("train", "validation", "heldout") for case in load_cases(split)}
 ORDERS = load_records("orders.json")
@@ -26,11 +27,14 @@ class FakeModel:
     name = "deterministic-test-model"
 
     def generate(self, prompt, schema):
+        if schema is FailureDiagnosis:
+            return FailureDiagnosis(category="skill_instruction", root_cause="Final-sale defect remedy was mislabeled",
+                evidence_step_ids=["s2"], suggested_change="Follow the defect exception", confidence="high")
         if schema is PolicyReview:
             supported = "prioritize the customer's requested refund" not in prompt.lower()
             return PolicyReview(supported=supported, explanation="Checked against fixture policy text")
         if schema is LessonProposal:
-            return LessonProposal(rules=["Apply the applicable exception before general return rules."])
+            return LessonProposal(rules=["For a confirmed manufacturing defect on a final-sale item, apply P-DEFECT before P-FINAL and use its supported action."])
         order_id = re.search(r"Intake order ID: (O-\d{3})", prompt).group(1)
         order = ORDERS[order_id]
         action, policy = expected_from_facts(order)
@@ -58,7 +62,7 @@ class SequenceModel:
 
 class AgentTests(unittest.TestCase):
     def test_data_and_policy_contract(self):
-        self.assertEqual([len(load_cases(s)) for s in ("train", "validation", "heldout")], [8, 8, 8])
+        self.assertEqual([len(load_cases(s)) for s in ("train", "validation", "heldout")], [9, 10, 8])
         for case in CASES.values():
             action, policy = expected_from_facts(ORDERS[case["order_id"]])
             self.assertEqual((action, policy), (case["expected_action"], case["required_policy"]))
@@ -141,7 +145,12 @@ class AgentTests(unittest.TestCase):
             bad_trace = SupportAgent(bad_model, case_memory=memory).run_case(case, rules=[])
             bad_grade = grade(case, bad_trace)
             self.assertTrue(bad_trace["stale_memory_reliance"])
-            self.assertEqual(diagnose_case(case, bad_trace, bad_grade)["category"], "memory_retrieval_use")
+            diagnosis_model = SequenceModel([FailureDiagnosis(category="memory_retrieval_use",
+                root_cause="Relied on stale case memory", evidence_step_ids=["s2"],
+                suggested_change="Use current policy", confidence="high")])
+            self.assertEqual(diagnose_case(diagnosis_model, case, bad_trace, bad_grade,
+                SKILL_FILE.read_text(), ORDERS[case["order_id"]], list(load_records("policies.json").values()))["category"],
+                "memory_retrieval_use")
 
     def test_conversation_missing_id_isolation_idempotency(self):
         service = ConversationService(SupportAgent(FakeModel()))
