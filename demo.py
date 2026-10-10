@@ -36,7 +36,7 @@ def _choose_job(run_dir: Path, trace_id: str | None = None) -> dict:
         jobs = [job for job in jobs if job["trace_id"] == trace_id]
     if not jobs:
         raise ValueError("No assessed failure job. Run baseline first.")
-    return next((j for j in jobs if j["case_id"] == "C-14"), jobs[0])
+    return min(jobs, key=lambda job: job["case_id"])
 
 
 def baseline(agent: SupportAgent, controller: ImprovementController, run_dir: Path) -> dict:
